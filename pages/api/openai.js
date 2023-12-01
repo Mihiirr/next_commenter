@@ -27,7 +27,6 @@ export default async function handler(req, res) {
   }
 
   const { postContent, tone } = req.body;
-  console.log("Lund", postContent);
 
   try {
     // Replace "text-davinci-003" with the latest model you intend to use
@@ -42,8 +41,6 @@ export default async function handler(req, res) {
       ],
       model: "gpt-3.5-turbo-1106",
     });
-
-    console.log(completion.choices[0].message.content);
 
     return res.status(200).json(completion.choices[0].message.content);
   } catch (error) {

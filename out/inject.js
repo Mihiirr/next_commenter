@@ -16,6 +16,9 @@ function injectIcon(commentBox) {
       iconElement.style.height = "20px";
       iconElement.style.margin = "10px";
 
+      // Append the icon to the comment box
+      commentBox.appendChild(iconElement);
+
       // Function to create and show the popup
       function showPopup() {
         const popup = document.createElement("div");
@@ -34,8 +37,7 @@ function injectIcon(commentBox) {
         popup.style.left = `${iconRect.left + window.scrollX}px`;
 
         // Extract the content of the LinkedIn post
-        const postContent = findPostContent(commentBox);
-        console.log("lof", postContent);
+        const postContent = findLinkedInPostContent(commentBox);
         const tones = [
           "supportive",
           "critical",
@@ -53,7 +55,7 @@ function injectIcon(commentBox) {
         tones.forEach((tone) => {
           const toneButton = document.createElement("button");
           toneButton.textContent = tone;
-          toneButton.setAttribute("title", tone);
+          toneButton.setAttribute("title", toneDescriptions[tone]);
           toneButton.style.padding = "5px";
           toneButton.style.width = "100%";
           toneButton.addEventListener("mouseover", function () {
@@ -66,12 +68,11 @@ function injectIcon(commentBox) {
 
           // Click event for tone buttons
           toneButton.addEventListener("click", function () {
-            getCommentSuggestion(postContent, tone.toLowerCase())
+            fetchOpenAiSuggestion(postContent, tone.toLowerCase())
               .then((suggestedCommentText) => {
                 chrome.storage.local.get("activeCommentBoxId", function (data) {
                   const commentBoxId = data.activeCommentBoxId;
                   const commentBox = document.getElementById(commentBoxId);
-                  console.log("SUGG", commentBox);
                   if (commentBox) {
                     const suggestedComment =
                       commentBox.querySelector(".ql-editor");
@@ -88,75 +89,24 @@ function injectIcon(commentBox) {
                 console.error("Error getting comment suggestion:", error)
               );
           });
-          // Function to call the AI service API
-          // Replace this with your actual API call implementation
-          // Function to call the OpenAI service API
-          async function getCommentSuggestion(postContent, tone) {
-            try {
-              const suggestedCommentText = await fetchOpenAiSuggestion(
-                postContent,
-                tone
-              );
-              return suggestedCommentText;
-            } catch (error) {
-              console.error(
-                "Error getting comment suggestion from OpenAI:",
-                error
-              );
-              return "Sorry, there was an error generating the comment.";
-            }
-          }
-          // Function to make the API request to OpenAI
-          async function fetchOpenAiSuggestion(postContent, tone) {
-            console.log("Typeoff", postContent);
-            const apiBaseUrl = "http://localhost:3000";
-            const response = await fetch(`${apiBaseUrl}/api/openai`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-
-              body: JSON.stringify({ postContent }),
-            });
-            if (!response.ok) {
-              console.error(
-                "Server responded with a non-OK status:",
-                response.status
-              );
-              return "Error in fetching response.";
-            }
-            try {
-              const data = await response.json();
-              console.log("data", data);
-              return data;
-            } catch (error) {
-              console.error("Failed to parse JSON:", error);
-              return "Error in parsing server response.";
-            }
-            // console.log("mihir", postContent);
-
-            // const completion = await openai.chat.completions.create({
-            //   messages: [
-            //     { role: "user", content: "Who won the world series in 2020?" },
-            //   ],
-            //   model: "gpt-3.5-turbo",
-            // });
-
-            // console.log(completion.choices[0]);
-          }
-
           popup.appendChild(toneButton);
           document.body.appendChild(popup);
         });
 
-        // document.addEventListener('click', function (event) {
-        //     if (popup && !popup.contains(event.target)) {
-        //         popup.style.display = 'none';
-        //     }
-        // });
+        // Function to handle outside click
+        function handleClickOutside(event) {
+          if (popup && !popup.contains(event.target)) {
+            popup.style.display = 'none';
+            document.removeEventListener('click', handleClickOutside);
+          }
+        }
+
+        // Delay adding the event listener to avoid immediate closing due to the same click event
+        setTimeout(() => {
+          document.addEventListener('click', handleClickOutside);
+        }, 0);
       }
-      // Append the icon to the comment box
-      commentBox.appendChild(iconElement);
+
       iconElement.addEventListener("click", function (event) {
         showPopup(event.target);
         const commentBoxId = this.closest(
@@ -165,35 +115,102 @@ function injectIcon(commentBox) {
 
         chrome.storage.local.set({ activeCommentBoxId: commentBoxId });
       });
-    }
+    } 7
   } catch (error) {
     console.error("Error in injectIcon function:", error);
   }
 }
 
-function findPostContent(commentBoxNode) {
-  // The common ancestor would likely be a 'div' or 'article' element that contains both the post content and the comments.
-  // This is an assumed class name for the common ancestor, and you will need to update it according to LinkedIn's actual DOM structure.
-  const commonAncestorSelector = ".ember-view.occludable-update";
-  const commonAncestorSelector2 =
-    ".feed-shared-update-v2.feed-shared-update-v2--minimal-padding.full-height.relative.feed-shared-update-v2--e2e.artdeco-card";
-  const commonAncestor3 = ".feed-shared-update-v2__description-wrapper.mr2";
-  const postContentSelector =
-    ".update-components-text.relative.update-components-update-v2__commentary"; // This should target the element that directly contains the text of the post.
+// Function to make the API request to OpenAI
+async function fetchOpenAiSuggestion(postContent, tone) {
+  const apiBaseUrl = "http://localhost:3000";
+  const response = await fetch(`${apiBaseUrl}/api/openai`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
 
-  const commonAncestor4 =
-    ".feed-shared-update-v2 feed-shared-update-v2--minimal-padding full-height relative artdeco-card";
+    body: JSON.stringify({ postContent, tone }),
+  });
+  if (!response.ok) {
+    console.error(
+      "server responded with non ok status!!!",
+      response.status
+    );
+    return "Error getting comment suggestion from OpenAI!!!";
+  }
+  try {
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error("Failed to parse JSON:", error);
+    return "Error in parsing server response.";
+  }
+}
+
+// To find LinkedIn Post content:
+function findLinkedInPostContent(commentBoxNode) {
+  const commonAncestorSelector =
+    ".feed-shared-update-v2.feed-shared-update-v2--minimal-padding.full-height.relative.feed-shared-update-v2--e2e.artdeco-card";
+  const likeCommonAncestorSeclector = ".feed-shared-update-v2.feed-shared-update-v2--minimal-padding.full-height.relative.artdeco-card"
+  const commonAncestorSelector2 = ".feed-shared-update-v2.feed-shared-update-v2--minimal-padding.full-height.relative.artdeco-card";
+  const postContentSelector =
+    ".update-components-text.relative.update-components-update-v2__commentary";
 
   // Find the common ancestor element that contains the post content.
   const commonAncestor =
     commentBoxNode.closest(commonAncestorSelector) ||
-    commentBoxNode.closest(commonAncestorSelector2) ||
-    commentBoxNode.closest(commonAncestor3) ||
-    commentBoxNode.closest(commonAncestor4);
+    commentBoxNode.closest(likeCommonAncestorSeclector) ||
+    commentBoxNode.closest(commonAncestorSelector2)
   if (!commonAncestor) {
     console.error("Unable to find the common ancestor element.");
     return null;
   }
+
+
+  // content-script.js
+  function requestImageSourcesFromBackground(iframeSelector) {
+    chrome.runtime.sendMessage(
+      { message: "fetchImageSources", iframeSelector },
+      response => {
+        if (response.imageSources) {
+          console.log('Image sources:', response.imageSources);
+          // Do something with response.imageSources
+        } else if (response.error) {
+          console.error('Error:', response.error);
+        }
+      }
+    );
+  }
+
+  // Call this function whenever you need to fetch image sources
+  requestImageSourcesFromBackground('.document-s-container__document-element.document-s-container__document-element--loaded');
+
+
+  // Corousel content finding:
+  document.querySelectorAll('iframe').forEach(item =>
+    console.log(item.contentWindow.document.body.querySelector('.carousel-track'))
+  )
+  const corouselIframeSelector = document.querySelector(".document-s-container__document-element.document-s-container__document-element--loaded");
+  corouselIframeSelector.addEventListener('load', function () {
+    // Access the contentDocument of the iframe
+    const iframeDocument = corouselIframeSelector.contentDocument || corouselIframeSelector.contentWindow.document;
+    console.log(`iframeDocument: ${iframeDocument}`)
+    if (!iframeDocument) {
+      return "No corousel found!!!"
+    }
+    const ulElementCorousel = iframeDocument.querySelector(".carousel-track")
+    if (!ulElementCorousel) {
+      return "No ul element found in corousel"
+    }
+    const imageElements = ulElementCorousel.querySelectorAll('img');
+
+    // Map over the image elements and extract the src attribute
+    const corouselImageSources = Array.from(imageElements).map(img => img.src);
+    console.log({ corouselImageSources })
+  });
+
+
 
   // Now find the post content element within the common ancestor.
   const postContentElement = commonAncestor.querySelector(postContentSelector);
@@ -207,14 +224,12 @@ function findPostContent(commentBoxNode) {
     console.error("Breakdown span not found.");
     return "Oops, Somthing went wrong!!!";
   }
-
   // Then, find the innermost 'span' with 'dir="ltr"' within 'breakdownSpan'
   const targetSpan = breakdownSpan.querySelector('span span[dir="ltr"]');
   if (!targetSpan) {
     console.error('Target span with dir="ltr" not found.');
     return "Oops, Somthing went wrong!!!";
   }
-
   // Check if the targetSpan has non-null textContent
   if (targetSpan.textContent === null || targetSpan.textContent === undefined) {
     console.error("Target span textContent is null or undefined.");
@@ -231,18 +246,8 @@ const observer = new MutationObserver(function (mutations) {
     mutations.forEach(function (mutation) {
       if (mutation.addedNodes) {
         mutation.addedNodes.forEach(function (node) {
-          // Check if the added node is a comment box or contains one
           if (node.matches && node.matches(".display-flex.mlA")) {
-            const postContentElement = findPostContent(node);
-            if (postContentElement) {
-              const postContent =
-                postContentElement && postContentElement.textContent
-                  ? postContentElement.textContent.trim()
-                  : "";
-
-              // Pass the postContent to your injectIcon function or handle it however you need.
-              injectIcon(node, postContent);
-            }
+            injectIcon(node);
           } else if (node.querySelectorAll) {
             const commentBoxes = node.querySelectorAll(".display-flex.mlA");
             commentBoxes.forEach(injectIcon);
