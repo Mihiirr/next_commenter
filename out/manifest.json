@@ -13,7 +13,7 @@
     "48": "/icons/comments.png",
     "192": "/icons/comments.png"
   },
-  "permissions": ["storage", "tabs", "https://media.licdn.com/*"],
+  "permissions": ["storage"],
   "web_accessible_resources": [
     {
       "resources": ["index.html", "icons/*"],
@@ -27,10 +27,7 @@
       "js": ["inject.js"]
     }
   ],
-  "host_permissions": [
-    "https://www.linkedin.com/*",
-    "https://media.licdn.com/*"
-  ],
+  "host_permissions": ["https://www.linkedin.com/*"],
   "action": {
     "default_popup": "index.html",
     "default_icon": {

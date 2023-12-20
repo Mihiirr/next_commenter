@@ -38,6 +38,7 @@ function injectIcon(commentBox) {
 
         // Extract the content of the LinkedIn post
         const postContent = findLinkedInPostContent(commentBox);
+        console.log(`PostContent:${postContent.postContentText}`)
         const tones = [
           "supportive",
           "critical",
@@ -68,7 +69,7 @@ function injectIcon(commentBox) {
 
           // Click event for tone buttons
           toneButton.addEventListener("click", function () {
-            fetchOpenAiSuggestion(postContent, tone.toLowerCase())
+            fetchOpenAiSuggestion(postContent.postContentText, tone.toLowerCase(), postContent.imageSources)
               .then((suggestedCommentText) => {
                 chrome.storage.local.get("activeCommentBoxId", function (data) {
                   const commentBoxId = data.activeCommentBoxId;
@@ -122,7 +123,7 @@ function injectIcon(commentBox) {
 }
 
 // Function to make the API request to OpenAI
-async function fetchOpenAiSuggestion(postContent, tone) {
+async function fetchOpenAiSuggestion(postContent, tone, imageSource) {
   const apiBaseUrl = "http://localhost:3000";
   const response = await fetch(`${apiBaseUrl}/api/openai`, {
     method: "POST",
@@ -130,7 +131,7 @@ async function fetchOpenAiSuggestion(postContent, tone) {
       "Content-Type": "application/json",
     },
 
-    body: JSON.stringify({ postContent, tone }),
+    body: JSON.stringify({ postContent, tone, imageSource }),
   });
   if (!response.ok) {
     console.error(
@@ -150,6 +151,8 @@ async function fetchOpenAiSuggestion(postContent, tone) {
 
 // To find LinkedIn Post content:
 function findLinkedInPostContent(commentBoxNode) {
+  let postContentText;
+  let imageSources;
   const commonAncestorSelector =
     ".feed-shared-update-v2.feed-shared-update-v2--minimal-padding.full-height.relative.feed-shared-update-v2--e2e.artdeco-card";
   const likeCommonAncestorSeclector = ".feed-shared-update-v2.feed-shared-update-v2--minimal-padding.full-height.relative.artdeco-card"
@@ -162,82 +165,62 @@ function findLinkedInPostContent(commentBoxNode) {
     commentBoxNode.closest(commonAncestorSelector) ||
     commentBoxNode.closest(likeCommonAncestorSeclector) ||
     commentBoxNode.closest(commonAncestorSelector2)
+
   if (!commonAncestor) {
     console.error("Unable to find the common ancestor element.");
-    return null;
-  }
-
-
-  // content-script.js
-  function requestImageSourcesFromBackground(iframeSelector) {
-    chrome.runtime.sendMessage(
-      { message: "fetchImageSources", iframeSelector },
-      response => {
-        if (response.imageSources) {
-          console.log('Image sources:', response.imageSources);
-          // Do something with response.imageSources
-        } else if (response.error) {
-          console.error('Error:', response.error);
+    postContentText = undefined;
+    imageSources = undefined;
+  } else {
+    // Now find the post content element within the common ancestor.
+    const postContentElement = commonAncestor.querySelector(postContentSelector);
+    if (!postContentElement) {
+      console.error("Unable to find the post content element.");
+      postContentText = undefined;
+    } else {
+      // Find the 'span' with class 'break-words'
+      const breakdownSpan = postContentElement.querySelector(".break-words");
+      if (!breakdownSpan) {
+        console.error("Breakdown span not found.");
+        postContentText = undefined;
+      } else {
+        // Then, find the innermost 'span' with 'dir="ltr"' within 'breakdownSpan'
+        const targetSpan = breakdownSpan.querySelector('span span[dir="ltr"]');
+        if (!targetSpan) {
+          console.error('Target span with dir="ltr" not found.');
+          postContentText = undefined;
+        } else {
+          // Check if the targetSpan has non-null textContent
+          if (targetSpan.textContent === null || targetSpan.textContent === undefined) {
+            console.error("Target span textContent is null or undefined.");
+            postContentText = undefined;
+          } else {
+            postContentText = targetSpan.textContent ? targetSpan.textContent.trim() : undefined
+          }
         }
       }
-    );
-  }
-
-  // Call this function whenever you need to fetch image sources
-  requestImageSourcesFromBackground('.document-s-container__document-element.document-s-container__document-element--loaded');
-
-
-  // Corousel content finding:
-  document.querySelectorAll('iframe').forEach(item =>
-    console.log(item.contentWindow.document.body.querySelector('.carousel-track'))
-  )
-  const corouselIframeSelector = document.querySelector(".document-s-container__document-element.document-s-container__document-element--loaded");
-  corouselIframeSelector.addEventListener('load', function () {
-    // Access the contentDocument of the iframe
-    const iframeDocument = corouselIframeSelector.contentDocument || corouselIframeSelector.contentWindow.document;
-    console.log(`iframeDocument: ${iframeDocument}`)
-    if (!iframeDocument) {
-      return "No corousel found!!!"
     }
-    const ulElementCorousel = iframeDocument.querySelector(".carousel-track")
-    if (!ulElementCorousel) {
-      return "No ul element found in corousel"
+  }
+
+  // Fetch images:
+  const commonImageElement = ".update-components-image__container";
+  const imageEle = commonAncestor.querySelector(commonImageElement)
+  if (!imageEle) {
+    console.log(`imageEle not fount`)
+    imageSources = undefined;
+  } else {
+    const imagesElements = imageEle.querySelectorAll('img');
+    if (!imagesElements) {
+      console.log("imagesElements not found!!!")
+      imageSources = undefined;
+    } else {
+      // Map over the image elements and extract the src attribute
+      imageSources = Array.from(imagesElements).map(img => img.src);
+      console.log({ postContentText, imageSources })
     }
-    const imageElements = ulElementCorousel.querySelectorAll('img');
-
-    // Map over the image elements and extract the src attribute
-    const corouselImageSources = Array.from(imageElements).map(img => img.src);
-    console.log({ corouselImageSources })
-  });
-
-
-
-  // Now find the post content element within the common ancestor.
-  const postContentElement = commonAncestor.querySelector(postContentSelector);
-  if (!postContentElement) {
-    console.error("Unable to find the post content element.");
-    return "Oops, Somthing went wrong!!!";
-  }
-  // Find the 'span' with class 'break-words'
-  const breakdownSpan = postContentElement.querySelector(".break-words");
-  if (!breakdownSpan) {
-    console.error("Breakdown span not found.");
-    return "Oops, Somthing went wrong!!!";
-  }
-  // Then, find the innermost 'span' with 'dir="ltr"' within 'breakdownSpan'
-  const targetSpan = breakdownSpan.querySelector('span span[dir="ltr"]');
-  if (!targetSpan) {
-    console.error('Target span with dir="ltr" not found.');
-    return "Oops, Somthing went wrong!!!";
-  }
-  // Check if the targetSpan has non-null textContent
-  if (targetSpan.textContent === null || targetSpan.textContent === undefined) {
-    console.error("Target span textContent is null or undefined.");
-    return "Oops, Somthing went wrong!!!";
   }
 
   // Return the trimmed text content
-  return targetSpan.textContent ? targetSpan.textContent.trim() : "";
+  return { postContentText, imageSources };
 }
 
 // Use MutationObserver to monitor dynamically added comment boxes
@@ -245,6 +228,7 @@ const observer = new MutationObserver(function (mutations) {
   try {
     mutations.forEach(function (mutation) {
       if (mutation.addedNodes) {
+        ``
         mutation.addedNodes.forEach(function (node) {
           if (node.matches && node.matches(".display-flex.mlA")) {
             injectIcon(node);
